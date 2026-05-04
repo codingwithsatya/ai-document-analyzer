@@ -1,0 +1,9 @@
+anthropic
+voyageai
+supabase
+pypdf2
+python-dotenv
+fastapi
+uvicorn
+python-multipart
+fpdf2
