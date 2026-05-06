@@ -79,7 +79,11 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
 # ── Hybrid search helpers ──────────────────────────────────────────
 
-def semantic_search(query_vector: list[float], top_k: int = 20) -> list[dict]:
+def semantic_search(
+    query_vector: list[float],
+    top_k: int = 20,
+    document_id: str | None = None
+) -> list[dict]:
     """Vector similarity search via pgvector."""
     response = supabase.rpc("match_chunks", {
         "query_embedding": query_vector,
@@ -87,7 +91,14 @@ def semantic_search(query_vector: list[float], top_k: int = 20) -> list[dict]:
         "match_count": top_k,
         "match_threshold": 0.1
     }).execute()
-    return response.data or []
+
+    results = response.data or []
+
+    # Filter by document if specified
+    if document_id:
+        results = [r for r in results if r.get("document_id") == document_id]
+
+    return results
 
 
 def keyword_search(query: str, all_chunks: list[dict], top_k: int = 20) -> list[dict]:
@@ -159,30 +170,28 @@ def rerank(query: str, chunks: list[dict], top_n: int = 5) -> list[dict]:
     return reranked
 
 
-def hybrid_search_pipeline(question: str, top_k: int = 5) -> list[dict]:
+def hybrid_search_pipeline(
+    question: str,
+    top_k: int = 5,
+    document_id: str | None = None
+) -> list[dict]:
     """Full pipeline: embed → semantic → keyword → RRF → rerank."""
 
-    # 1. Embed the question
     time.sleep(20)
     result = voyage.embed([question], model="voyage-3", input_type="query")
     query_vector = result.embeddings[0]
 
-    # 2. Semantic search — get top 20
-    semantic_results = semantic_search(query_vector, top_k=20)
+    semantic_results = semantic_search(
+        query_vector, top_k=20, document_id=document_id)
     print(f"   Semantic: {len(semantic_results)} results")
 
     if not semantic_results:
         return []
 
-    # 3. Keyword search — BM25 over the same chunks
     keyword_results = keyword_search(question, semantic_results, top_k=20)
     print(f"   Keyword: {len(keyword_results)} results")
 
-    # 4. RRF merge
     fused = reciprocal_rank_fusion(semantic_results, keyword_results)
-    print(f"   After RRF: {len(fused)} results")
-
-    # 5. Rerank top candidates
     reranked = rerank(question, fused[:20], top_n=top_k)
     print(f"   After reranking: {len(reranked)} results")
 
@@ -259,7 +268,10 @@ async def ask_question(request: QuestionRequest):
 
     print(f"\n🔍 Question: {request.question}")
 
-    chunks = hybrid_search_pipeline(request.question)
+    chunks = hybrid_search_pipeline(
+        request.question,
+        document_id=request.document_id
+    )
 
     if not chunks:
         return {
@@ -308,6 +320,29 @@ async def ask_question(request: QuestionRequest):
         "confidence": round(top_score, 3),
         "pipeline": "hybrid + rerank"
     }
+
+
+@app.get("/documents")
+async def list_documents():
+    """List all uploaded documents for this user."""
+    result = supabase.table("documents")\
+        .select("id, name, size_bytes, created_at")\
+        .eq("user_id", USER_ID)\
+        .order("created_at", desc=True)\
+        .execute()
+    return {"documents": result.data}
+
+
+@app.delete("/documents/{document_id}")
+async def delete_document(document_id: str):
+    """Delete a document and all its chunks."""
+    # Chunks are deleted automatically via ON DELETE CASCADE
+    supabase.table("documents")\
+        .delete()\
+        .eq("id", document_id)\
+        .eq("user_id", USER_ID)\
+        .execute()
+    return {"deleted": document_id}
 
 
 if __name__ == "__main__":
