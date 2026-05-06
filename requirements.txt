@@ -7,3 +7,5 @@ fastapi
 uvicorn
 python-multipart
 fpdf2
+rank_bm25
+cohere

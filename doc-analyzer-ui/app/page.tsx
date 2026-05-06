@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 interface Source {
   page: number;
   similarity: number;
+  rerank_score?: number;
 }
 
 interface Message {
@@ -129,13 +130,11 @@ export default function Home() {
                 }}
               />
             </div>
-
             {uploadError && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
                 {uploadError}
               </p>
             )}
-
             {/* Document info */}
             {doc && (
               <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -164,7 +163,6 @@ export default function Home() {
                 </div>
               </div>
             )}
-
             {/* Tips */}
             {!doc && !uploading && (
               <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -186,6 +184,7 @@ export default function Home() {
                 </div>
               </div>
             )}
+            a
           </div>
 
           {/* Right — Chat panel */}
@@ -223,7 +222,11 @@ export default function Home() {
                             key={j}
                             className="text-xs bg-white border border-gray-200 text-gray-500 px-2 py-0.5 rounded-full"
                           >
-                            Page {s.page} · {Math.round(s.similarity * 100)}%
+                            Page {s.page} ·{" "}
+                            {Math.round(
+                              (s.rerank_score ?? s.similarity ?? 0) * 100,
+                            )}
+                            % relevance
                           </span>
                         ))}
                       </div>
